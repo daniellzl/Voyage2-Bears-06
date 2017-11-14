@@ -6,6 +6,9 @@ require('dotenv').config();
 
 var app = express();
 
+console.log(process.env.NEWS_KEY);
+console.log(process.env.SEARCH_KEY);
+
 app.use(bodyParser.urlencoded({ extended: false })); // needed to get `req.body` in the POST
 app.use(routes);
 app.use(express.static('public')); // possible this needs to be more robust, using path.join()

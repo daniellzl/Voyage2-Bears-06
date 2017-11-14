@@ -25,6 +25,7 @@ var knownWords = categories.concat('help', 'random');
 /**
  *
  * HELPER FUNCTIONS
+ *
  */
 
 // we send this `help` response from at least 2 places
@@ -32,50 +33,13 @@ function sendHelp(res) {
   return res.json({
     response_type: 'ephemeral',
     text:
-      "I am a newsbot. Type `/news` and I'll send you the latest news headlines.",
-    attachments: [
-      {
-        mrkdwn_in: ['text', 'pretext'],
-        pretext:
-          'You can ask me for headlines from any of six categories: `news`, `sports`, `finance`, `pop`, `science`, and `tech`.',
-        text: 'Try typing `/news tech`.',
-        color: '#36a64f',
-      },
-      {
-        mrkdwn_in: ['text'],
-        pretext: 'You can also mix it up within a category:',
-        color: '#36a64f',
-        text: 'Try `/news tech random`',
-      },
-      {
-        mrkdwn_in: ['text'],
-        pretext: '...or get totally random news.',
-        color: '#36a64f',
-        text: 'Type `/news random`',
-      },
-      {
-        mrkdwn_in: ['text'],
-        pretext: 'If you have a search term in mind, try this:',
-        color: '#36a64f',
-        text: '`/news bananas`',
-      },
-      {
-        mrkdwn_in: ['text'],
-        pretext: '..or limit the search to a category.',
-        color: '#36a64f',
-        text: '`/news science bananas`',
-      },
-      {
-        mrkdwn_in: ['text', 'pretext'],
-        pretext: 'Of course, you found this by asking for help',
-        color: '#36a64f',
-        text: '`/news help`',
-      },
-    ],
+      'I am a newsbot. Enter `/news` for the latest headlines.\n\n' +
+      'I can look for headlines from six categories: news, sports, finance, pop, science, and tech. Try typing `/news tech` for example.\n\n' +
+      'You can also try `/news random` for headlines from a random source, or `/news [category] random` to to mix it up within a category.\n\n' +
+      'To find news about a particular search term, try `/news [search-term]` or `/news [category] [search-term]` (where "category" is any of the 6 named above).'
   });
 }
 
-// pick an index from an array
 function getRandomIndex(array) {
   return Math.floor(Math.random() * array.length);
 }
@@ -95,6 +59,7 @@ router.post('/news', function(req, res) {
       text: 'Something went wrong...',
     });
   }
+
   var response_url = req.body.response_url;
 
   // turn user input into array of words
@@ -118,7 +83,7 @@ router.post('/news', function(req, res) {
       }
       result.push(text.slice(j, text.length));
       return result;
-      // text isn't defined
+    // text isn't defined
     } else {
       return ['news'];
     }
@@ -128,20 +93,17 @@ router.post('/news', function(req, res) {
   var sourceName = '';
   var sourceValue = '';
 
-  // determine if first word of user input is a news category, `help`, or `random`
-  var found = knownWords.indexOf(textArr[0]) > -1;
+  // if first word of user input is a known word (i.e. a news category, `help`, or `random`)
+  if (knownWords.indexOf(textArr[0]) > -1) {
 
-  // if user input is empty or a single word
-  if (textArr.length === 1) {
-    var text = textArr[0];
-
-    // if user input is a pre-defined word
-    if (found) {
+    // if user inputs '/news' or '/news [category]' or '/news random'
+    if (textArr.length === 1) {
+      var text = textArr[0];
       if (text === 'help') {
         return sendHelp(res);
       } else if (text === 'news') {
-        sourceName = 'Associated Press';
-        sourceValue = 'associated-press';
+        sourceName = 'Google News';
+        sourceValue = 'google-news';
       } else if (text === 'sports') {
         sourceName = 'ESPN';
         sourceValue = 'espn';
@@ -149,81 +111,79 @@ router.post('/news', function(req, res) {
         sourceName = 'Bloomberg';
         sourceValue = 'bloomberg';
       } else if (text === 'pop') {
-        sourceName = 'Entertainment Weekly';
-        sourceValue = 'entertainment-weekly';
+        sourceName = 'MTV News';
+        sourceValue = 'mtv-news';
       } else if (text === 'tech') {
         sourceName = 'Engadget';
         sourceValue = 'engadget';
       } else if (text === 'science') {
-        sourceName = 'science';
+        sourceName = 'New Scientist';
         sourceValue = 'new-scientist';
       } else if (text === 'random') {
-        // pick random from all category sources
-        var randomCategory = categories[getRandomIndex(categories)];
-        var randomArray = sources[randomCategory];
-        var rnd = getRandomIndex(randomArray);
-        sourceName = randomArray[rnd].text;
-        sourceValue = randomArray[rnd].value;
+        var choosenSources = sources[categories[getRandomIndex(categories)]];
+        var choosenSourceIndex = getRandomIndex(choosenSources);
+        sourceName = choosenSources[choosenSourceIndex].text;
+        sourceValue = choosenSources[choosenSourceIndex].value;
       }
       getNews(sourceValue, process.env.NEWS_KEY, response_url);
       return res.json({
-        response_type: 'ephemeral',
-        text: text + ' headlines from ' + sourceName,
+        response_type: 'in_channel',
+        text: 'Gathering ' + text + ' headlines from ' + sourceName + '...'
       });
 
-      // if user input is not found, search news for term
+    // if user inputs '/news [category] random'
+    } else if (textArr.length === 2 && sources.hasOwnProperty(textArr[0]) && textArr[1] === 'random') {
+      var chosenCategory = textArr[0];
+      var chosenArray = sources[chosenCategory];
+      var randomSource = getRandomIndex(chosenArray);
+      sourceName = chosenArray[randomSource].text;
+      sourceValue = chosenArray[randomSource].value;
+      getNews(sourceValue, process.env.NEWS_KEY, response_url);
+      return res.json({
+        response_type: 'in_channel',
+        text: 'Gathering ' + chosenCategory + ' headlines from ' + sourceName + '...'
+      });
+
+    // if user inputs '/news [category] [search-term]'
+    } else if (sources.hasOwnProperty(textArr[0])) {
+      var category = textArr[0];
+      var toSearch = textArr.slice(1);
+      searchNews(toSearch, process.env.SEARCH_KEY, response_url, category);
+      return res.json({
+        response_type: 'in_channel',
+        text:
+          'Gathering headlines about ' +
+          toSearch.join(' ') +
+          ' from ' +
+          category +
+          ' sources' +
+          '...',
+      });
+
+    // if user inputs '/news random [search-term]' or 'news help [search-term]'
     } else {
       searchNews(textArr, process.env.SEARCH_KEY, response_url);
       return res.json({
-        response_type: 'ephemeral',
-        text: 'Headlines for ' + text,
+        response_type: 'in_channel',
+        text: 'Gathering headlines for ' + textArr.join(' ') + '...',
       });
     }
 
-    // if user input `category random` (or `category random [anything else]`)
-  } else if (textArr.length > 1 && found && textArr[1] === 'random') {
-    var chosenCategory = textArr[0];
-    var chosenArray = sources[chosenCategory];
-    var randomSource = getRandomIndex(chosenArray);
-    sourceName = chosenArray[randomSource].text;
-    sourceValue = chosenArray[randomSource].value;
-
-    getNews(sourceValue, process.env.NEWS_KEY, response_url);
+  // if first word of user input is unknown
+  } else {
+    searchNews(textArr, process.env.SEARCH_KEY, response_url);
     return res.json({
-      response_type: 'ephemeral',
-      text: 'gathering ' + chosenCategory + ' headlines from ' + sourceName,
-    });
-
-    // user input is a multiple word search
-  } else if (categories.indexOf(textArr[0]) > -1) {
-    // there's a category before other text
-    var category = textArr[0];
-    var toSearch = textArr.slice(1);
-    searchNews(toSearch, process.env.SEARCH_KEY, response_url, category);
-    return res.json({
-      response_type: 'ephemeral',
-      text:
-        'gathering headlines about ' +
-        toSearch.join(' ') +
-        ' from ' +
-        category +
-        ' sources.',
+      response_type: 'in_channel',
+      text: 'Gathering headlines for ' + textArr.join(' ') + '...',
     });
   }
-
-  // no category 'filter' at textArr[0]; search term is entire array
-  searchNews(textArr, process.env.SEARCH_KEY, response_url);
-  return res.json({
-    response_type: 'ephemeral',
-    text: 'Headlines for ' + textArr.join(' '),
-  });
 });
 
 /**
  *
  * INSTALL NEW TEAM: this route will acknowledge and redirect, when a new team
- * installs the app. 
- * 
+ * installs the app.
+ *
  * This URL must be set in the `Redirect URLs` section
  * of the app's settings: https://api.slack.com/apps/A7F31FZ1D/oauth
  *
